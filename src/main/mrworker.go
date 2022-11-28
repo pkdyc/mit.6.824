@@ -46,6 +46,5 @@ func loadPlugin(filename string) (func(string, string) []mr.KeyValue, func(strin
 		log.Fatalf("cannot find Reduce in %v", filename)
 	}
 	reducef := xreducef.(func(string, []string) string)
-
 	return mapf, reducef
 }
