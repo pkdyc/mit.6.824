@@ -48,8 +48,9 @@ rm -f mr-*
 # make sure software is freshly built.
 #(cd ../../mrapps && go clean)
 #(cd .. && go clean)
-(cd ../../mrapps && go build $RACE -buildmode=plugin mtiming.go) || exit 1
+#(cd ../../mrapps && go build $RACE -buildmode=plugin mtiming.go) || exit 1
 (cd ../../mrapps && go build $RACE -buildmode=plugin wc.go) || exit 1
+(cd ../../mrapps && go build $RACE -buildmode=plugin jobcount.go) || exit 1
 (cd .. && go build $RACE mrcoordinator.go) || exit 1
 (cd .. && go build $RACE mrworker.go) || exit 1
 (cd .. && go build $RACE mrsequential.go) || exit 1
@@ -94,57 +95,59 @@ echo '***' Starting wc test.
 #wait
 
 
-#########################################################
-echo '***' Starting map parallelism test.
-
-rm -f mr-*
-
-$TIMEOUT ../mrcoordinator ../pg*txt &
-sleep 1
-
-$TIMEOUT ../mrworker ../../mrapps/mtiming.so &
-$TIMEOUT ../mrworker ../../mrapps/mtiming.so
-
-NT=`cat mr-out* | grep '^times-' | wc -l | sed 's/ //g'`
-if [ "$NT" != "2" ]
-then
-  echo '---' saw "$NT" workers rather than 2
-  echo '---' map parallelism test: FAIL
-  failed_any=1
-fi
-
-if cat mr-out* | grep '^parallel.* 2' > /dev/null
-then
-  echo '---' map parallelism test: PASS
-else
-  echo '---' map workers did not run in parallel
-  echo '---' map parallelism test: FAIL
-  failed_any=1
-fi
-
-wait
-
-
-
 ##########################################################
-#echo '***' Starting reduce parallelism test.
+#echo '***' Starting map parallelism test.
 #
 #rm -f mr-*
 #
 #$TIMEOUT ../mrcoordinator ../pg*txt &
 #sleep 1
 #
-#$TIMEOUT ../mrworker ../../mrapps/rtiming.so &
-#$TIMEOUT ../mrworker ../../mrapps/rtiming.so
+#$TIMEOUT ../mrworker ../../mrapps/mtiming.so &
+#$TIMEOUT ../mrworker ../../mrapps/mtiming.so
 #
-#NT=`cat mr-out* | grep '^[a-z] 2' | wc -l | sed 's/ //g'`
-#if [ "$NT" -lt "2" ]
+#NT=`cat mr-out* | grep '^times-' | wc -l | sed 's/ //g'`
+#if [ "$NT" != "2" ]
 #then
-#  echo '---' too few parallel reduces.
-#  echo '---' reduce parallelism test: FAIL
+#  echo '---' saw "$NT" workers rather than 2
+#  echo '---' map parallelism test: FAIL
 #  failed_any=1
+#fi
+#
+#if cat mr-out* | grep '^parallel.* 2' > /dev/null
+#then
+#  echo '---' map parallelism test: PASS
 #else
-#  echo '---' reduce parallelism test: PASS
+#  echo '---' map workers did not run in parallel
+#  echo '---' map parallelism test: FAIL
+#  failed_any=1
 #fi
 #
 #wait
+
+
+
+#########################################################
+echo '***' Starting job count test.
+
+rm -f mr-*
+
+$TIMEOUT ../mrcoordinator ../pg*txt &
+sleep 1
+
+$TIMEOUT ../mrworker ../../mrapps/jobcount.so &
+$TIMEOUT ../mrworker ../../mrapps/jobcount.so
+$TIMEOUT ../mrworker ../../mrapps/jobcount.so &
+$TIMEOUT ../mrworker ../../mrapps/jobcount.so
+
+NT=`cat mr-out* | awk '{print $2}'`
+if [ "$NT" -eq "8" ]
+then
+  echo '---' job count test: PASS
+else
+  echo '---' map jobs ran incorrect number of times "($NT != 8)"
+  echo '---' job count test: FAIL
+  failed_any=1
+fi
+
+wait
