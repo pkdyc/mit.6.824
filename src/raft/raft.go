@@ -21,6 +21,7 @@ import (
 	//	"bytes"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	//	"6.824/labgob"
 	"6.824/labrpc"
@@ -88,7 +89,8 @@ type Raft struct {
 	matchIndex	[]int
 
 	// customized
-	status 		int32
+	status int32
+	clock  time.Time
 
 
 }
@@ -206,9 +208,15 @@ type AppendEntriesResult struct {
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
-
 }
 
+func (rf *Raft) timerReset(overtime int){
+	rf.clock = time.Now().Add(time.Duration(overtime) * time.Millisecond)
+}
+
+func (rf *Raft) timerOvertime() bool {
+	return rf.clock.Before(time.Now())
+}
 func (rf *Raft) getTerm() int32 {
 	return atomic.LoadInt32(&rf.currentTerm)
 }
