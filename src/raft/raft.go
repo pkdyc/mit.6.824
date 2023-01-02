@@ -49,6 +49,16 @@ type ApplyMsg struct {
 	SnapshotTerm  int
 	SnapshotIndex int
 }
+type LogEntry struct {
+
+}
+
+
+const (
+	Follower  int32 = iota
+	Candidate
+	Leader
+)
 
 //
 // A Go object implementing a single Raft peer.
@@ -64,16 +74,34 @@ type Raft struct {
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
 
+	// Persistent state on all servers
+	currentTerm int32
+	votedFor 	int
+	log			[]LogEntry
+
+	// Volatile state on all servers
+	commitIndex int
+	lastApplied int
+
+	// Volatile state on leaders
+	nextIndex	[]int
+	matchIndex	[]int
+
+	// customized
+	status 		int32
+
+
 }
 
 // return currentTerm and whether this server
 // believes it is the leader.
 func (rf *Raft) GetState() (int, bool) {
 
-	var term int
-	var isleader bool
+	var term = rf.getTerm()
+	var isleader = rf.getStatus() == Leader
 	// Your code here (2A).
-	return term, isleader
+
+	return int(term), isleader
 }
 
 //
@@ -143,6 +171,10 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 //
 type RequestVoteArgs struct {
 	// Your data here (2A, 2B).
+	term			int32
+	candidateId		int
+	lastLogIndex	int
+	lastLogTerm		int32
 }
 
 //
@@ -151,6 +183,22 @@ type RequestVoteArgs struct {
 //
 type RequestVoteReply struct {
 	// Your data here (2A).
+	term			int
+	voteGranted		int
+}
+
+type AppendEntriesArgs struct {
+	term 			int32
+	leaderId 		int
+	prevLogIndex	int
+	prevLogTerm		int32
+	entries			[]LogEntry
+	leaderCommit	int
+}
+
+type AppendEntriesResult struct {
+	term 			int32
+	success			bool
 }
 
 //
@@ -158,6 +206,15 @@ type RequestVoteReply struct {
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
+
+}
+
+func (rf *Raft) getTerm() int32 {
+	return atomic.LoadInt32(&rf.currentTerm)
+}
+
+func (rf *Raft) getStatus() int32 {
+	return atomic.LoadInt32(&rf.status)
 }
 
 //
