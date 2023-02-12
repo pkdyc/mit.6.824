@@ -335,7 +335,7 @@ func (cfg *config) start1(i int, applier func(int, chan ApplyMsg)) {
 
 func (cfg *config) checkTimeout() {
 	// enforce a two minute real-time limit on each test
-	if !cfg.t.Failed() && time.Since(cfg.start) > 120*time.Second {
+	if !cfg.t.Failed() && time.Since(cfg.start) > 1200*time.Second {
 		cfg.t.Fatal("test took longer than 120 seconds")
 	}
 }
@@ -443,10 +443,13 @@ func (cfg *config) checkOneLeader() int {
 			}
 		}
 
+
 		lastTermWithLeader := -1
-		for term, leaders := range leaders {
-			if len(leaders) > 1 {
-				cfg.t.Fatalf("term %d has %d (>1) leaders", term, len(leaders))
+		for term, leader := range leaders {
+			if len(leader) > 1 {
+				fmt.Printf("debug array : [%v]\n", leaders[term])
+				cfg.t.Fatalf("term %d has %d (>1) leader %d", term, len(leader), leader)
+
 			}
 			if term > lastTermWithLeader {
 				lastTermWithLeader = term

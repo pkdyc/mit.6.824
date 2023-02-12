@@ -91,7 +91,7 @@ func TestReElection2A(t *testing.T) {
 }
 
 func TestManyElections2A(t *testing.T) {
-	servers := 7
+	servers :=	 7
 	cfg := make_config(t, servers, false, false)
 	defer cfg.cleanup()
 
@@ -116,6 +116,7 @@ func TestManyElections2A(t *testing.T) {
 		cfg.connect(i1)
 		cfg.connect(i2)
 		cfg.connect(i3)
+		fmt.Printf("------- current [%d/%d] \n", ii , iters)
 	}
 
 	cfg.checkOneLeader()
@@ -181,10 +182,7 @@ func TestRPCBytes2B(t *testing.T) {
 	cfg.end()
 }
 
-//
-// test just failure of followers.
-//
-func For2023TestFollowerFailure2B(t *testing.T) {
+func TestFor2023TestFollowerFailure2B(t *testing.T) {
 	servers := 3
 	cfg := make_config(t, servers, false, false)
 	defer cfg.cleanup()
@@ -231,7 +229,7 @@ func For2023TestFollowerFailure2B(t *testing.T) {
 //
 // test just failure of leaders.
 //
-func For2023TestLeaderFailure2B(t *testing.T) {
+func TestFor2023TestLeaderFailure2B(t *testing.T) {
 	servers := 3
 	cfg := make_config(t, servers, false, false)
 	defer cfg.cleanup()
@@ -679,6 +677,13 @@ loop:
 
 	cfg.end()
 }
+
+
+
+
+
+
+
 
 func TestPersist12C(t *testing.T) {
 	servers := 3
@@ -1152,7 +1157,7 @@ func snapcommon(t *testing.T, name string, disconnect bool, reliable bool, crash
 		}
 
 		if cfg.LogSize() >= MAXLOGSIZE {
-			cfg.t.Fatalf("Log size too large")
+			cfg.t.Fatalf("Command size too large")
 		}
 		if disconnect {
 			// reconnect a follower, who maybe behind and
