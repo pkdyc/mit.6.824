@@ -224,12 +224,27 @@ type AppendEntriesReply struct {
 //
 // example RequestVote RPC handler.
 //
+
+func (rf *Raft) requestVoteGranted(args *RequestVoteArgs, reply *RequestVoteReply){
+	rf.votedFor = args.CandidateId
+	reply.VoteGranted = true
+	if rf.status == Candidate{
+		rf.setCandidateToFollower()
+	}
+
+	if rf.status == Leader{
+		rf.setLeaderToFollower()
+	}
+}
+
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	reply.Term = args.Term
 	reply.VoteGranted = false
+
+	//fmt.Printf("Received vote from [%d] with [%#v] \n",args.CandidateId, args)
 
 
 	if args.Term < rf.currentTerm{
@@ -238,46 +253,33 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		return
 	}
 
+	// greater term doesn't mean it will be the leader
+	// it does help others to update the currentTerm
 	if args.Term > rf.currentTerm{
 		rf.currentTerm = args.Term
-		rf.votedFor = args.CandidateId
-		reply.VoteGranted = true
-		if rf.status == Candidate{
-		 	rf.setCandidateToFollower()
-		}
-
-		if rf.status == Leader{
-		 	rf.setLeaderToFollower()
+		// winning case 0: greater term and the current log is empty
+		if len(rf.log) == 0 {
+			println("winning case 0")
+			rf.requestVoteGranted(args, reply)
 		}
 	}
 
 	// what needs to be checked at first are the voteFor, for the same term,it might be possible to vote for
 	// multiple time,therefore we need to set the constraint at first
 	if  (rf.votedFor == rf.me || rf.votedFor == -1) && args.Term == rf.currentTerm && len(rf.log) > 1{
+		// winning case two : with newer log
+
+
 		entry := rf.log[len(rf.log) - 1]
 		// case 1 : different term:
 		if int(args.LastLogTerm) > entry.Term{
-			rf.votedFor = args.CandidateId
-			reply.VoteGranted = true
-			if rf.status == Candidate{
-				rf.setCandidateToFollower()
-			}
-
-			if rf.status == Leader{
-				rf.setLeaderToFollower()
-			}
+			println("winning case 1")
+			rf.requestVoteGranted(args, reply)
 		}
-		// case 2: same term, but with greater log inedx
-		if int(args.LastLogTerm) == entry.Term && args.LastLogIndex > entry.Index{
-			rf.votedFor = args.CandidateId
-			reply.VoteGranted = true
-			if rf.status == Candidate{
-				rf.setCandidateToFollower()
-			}
-
-			if rf.status == Leader{
-				rf.setLeaderToFollower()
-			}
+		// case 2: same term, but with greater log index
+		if int(args.LastLogTerm) == entry.Term && args.LastLogIndex >= entry.Index{
+			println("winning case 2")
+			rf.requestVoteGranted(args, reply)
 		}
 	}
 
@@ -369,7 +371,6 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 
 	// case 1: received reply.Success==false as reply, decrease the value of nextIndex,until it reach 1 (? does it will go down 1?)
 	if reply.Success == false{
-		println("fuck...")
 		rf.nextIndex[server] = rf.nextIndex[server] - 1
 		if rf.nextIndex[server] < 0{
 			//log.Fatalln("the value of nextIndex[server] goes under than 0")
@@ -382,7 +383,6 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 		if len(rf.log) > 0{
 			rf.nextIndex[server] = rf.matchIndex[server] + 1
 		}
-		fmt.Printf("Server [%#v] received new log, current nextIndex will be [%#v] , current successCount is [%d]\n", server, rf.nextIndex[server], *successCnt)
 	}
 	//fmt.Printf("Success Current [%#v] in Term [%#v] \n", *successCnt, rf.currentTerm)
 
@@ -401,7 +401,6 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 			}
 			rf.applyCh <- applyMsg
 			rf.commitIndex = rf.lastApplied
-			fmt.Printf("appending value   \n")
 		}
 		*successCnt = 0
 	}
@@ -443,7 +442,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		return len(rf.log), int(rf.currentTerm), false
 	}else {
 		// case 2: is the leader
-		fmt.Println("received start command")
 		entry := LogEntry{
 			Command: command,
 			Term:    int(rf.currentTerm),
@@ -453,8 +451,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		var index = len(rf.log)
 		var term = int(rf.currentTerm)
 		var isLeader = rf.status == Leader  // must be true
-		fmt.Printf("[%#v] [%#v] [%#v] leader id [%#v]\n", index, term, isLeader, rf.me)
-		fmt.Printf("Start command has been called ! with value [%#v] \n", command)
+		fmt.Printf("[%#v] [%#v] [%#v] leader id [%#v] with value [%#v]\n", index, term, isLeader, rf.me, command)
 		return index, term, isLeader
 	}
 
@@ -590,7 +587,20 @@ func (rf *Raft) startElection()  {
 	rf.currentTerm += 1
 	rf.votedFor = rf.me
 	rf.cntVoted = 1
-	args := RequestVoteArgs{Term: rf.currentTerm, CandidateId: rf.me}
+
+	var args RequestVoteArgs
+	if len(rf.log) > 0{
+		entry := rf.log[len(rf.log) - 1]
+		args = RequestVoteArgs{
+			Term: rf.currentTerm,
+			CandidateId: rf.me,
+			LastLogIndex: entry.Index,
+			LastLogTerm: int32(entry.Term),
+		}
+	}else {
+		args = RequestVoteArgs{Term: rf.currentTerm, CandidateId: rf.me}
+	}
+
 
 	for i := range rf.peers{
 		if i == rf.me{
@@ -659,7 +669,6 @@ func (rf *Raft) broadcastAppendEntries()  {
 		//	println("this is my bad")
 		//}
 		if preLogIdx > len(rf.log) - 1{
-			println("qwq")
 			preLogIdx = len(rf.log)
 			idx := len(rf.log) - 1
 
@@ -673,10 +682,6 @@ func (rf *Raft) broadcastAppendEntries()  {
 			}
 			go rf.sendAppendEntries(i, &args, &AppendEntriesReply{}, &successCnt)
 			continue
-		}
-
-		if preLogIdx == 2{
-			println("asdadsa")
 		}
 
 		entry := rf.log[preLogIdx]
@@ -697,7 +702,7 @@ func (rf *Raft) broadcastAppendEntries()  {
 			println("")
 		}
 
-		fmt.Printf("Sending [%#v] to server [%#v] \n", args.Entries, i)
+		fmt.Printf("[%#v] : Sending [%#v] to server [%#v] \n", rf.me, args.Entries, i)
 
 		go rf.sendAppendEntries(i, &args, &AppendEntriesReply{}, &successCnt)
 	}
@@ -716,7 +721,6 @@ func (rf *Raft) commitLog(args *AppendEntriesArgs){
 			CommandIndex: rf.lastApplied,
 		}
 		rf.applyCh <- applyMsg
-		fmt.Printf("appending value from follower\n")
 	}
 }
 
@@ -757,12 +761,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	rf.setHeartBeat()
 
-	if len(rf.log) == 2{
-		println("do something")
-	}
-	if args.LeaderCommit != 0 {
-		println("asdad")
-	}
 
 	if len(args.Entries) == 0 {
 		// just a normal heartbeat, do nothing
@@ -793,7 +791,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	// conflict 2: unmatched log at the same index
 	if rf.log[args.PrevLogIndex - 1].Term != args.PrevLogTerm{
-		rf.log = rf.log[:args.PrevLogTerm]
+		rf.log = rf.log[:args.PrevLogIndex]
 		return
 	}
 
@@ -835,6 +833,7 @@ func (rf *Raft) updateStatus (status int32){
 	case Candidate:
 		rf.cntVoted = 1
 		rf.status = Candidate
+		fmt.Printf("[%#v] i start to do the election with term [%#v] and log [%#v] with detail [%#v] \n", rf.me, rf.currentTerm, len(rf.log), rf.log)
 	case Leader:
 		rf.status= Leader
 		rf.matchIndex = make([]int, len(rf.peers))
