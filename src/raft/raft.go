@@ -244,7 +244,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	reply.Term = args.Term
 	reply.VoteGranted = false
 
-	//fmt.Printf("Received vote from [%d] with [%#v] \n",args.CandidateId, args)
+	fmt.Printf("Received vote from [%d] with [%#v] \n",args.CandidateId, args)
 
 
 	if args.Term < rf.currentTerm{
@@ -266,7 +266,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 	// what needs to be checked at first are the voteFor, for the same term,it might be possible to vote for
 	// multiple time,therefore we need to set the constraint at first
-	if  (rf.votedFor == rf.me || rf.votedFor == -1) && args.Term == rf.currentTerm && len(rf.log) > 1{
+	if  (rf.votedFor == rf.me || rf.votedFor == -1) && args.Term == rf.currentTerm && len(rf.log) > 0{
 		// winning case two : with newer log
 
 
@@ -735,9 +735,11 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	reply.Success = false
 	//var isEmpty = len(rf.log) == 0
 
+	fmt.Printf("Append entry from [%#v] with data [%#v] \n", args.LeaderId , args)
 	// case 0: if args.term < rf.currentTerm return false directly
 	if args.Term < rf.currentTerm{
 		// case 0: expired leader message
+		println("refuse append entries case 0")
 		println("drop the incorrect leader message")
 		return
 	}
@@ -783,6 +785,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	// conflict 1: pre-log_index > rf.current_log
 	// truncate the rest of it, the same as the one in case 4
 	if len(rf.log) < args.PrevLogIndex{
+		println("refuse append entries case 1")
 		return
 	}
 
@@ -791,7 +794,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	// conflict 2: unmatched log at the same index
 	if rf.log[args.PrevLogIndex - 1].Term != args.PrevLogTerm{
-		rf.log = rf.log[:args.PrevLogIndex]
+		println("refuse append entries case 2")
+		rf.log = rf.log[:args.PrevLogIndex - 1]
 		return
 	}
 
@@ -839,7 +843,7 @@ func (rf *Raft) updateStatus (status int32){
 		rf.matchIndex = make([]int, len(rf.peers))
 		rf.nextIndex = make([]int, len(rf.peers))
 		for i := range rf.nextIndex {
-			rf.nextIndex[i] = int(math.Max(float64(len(rf.log)), 1))
+			rf.nextIndex[i] = len(rf.log) + 1
 			fmt.Printf("set the value of nextIndex[%#v] to be [%#v] \n", i , rf.nextIndex[i])
 		}
 
