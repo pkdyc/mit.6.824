@@ -244,7 +244,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	reply.Term = args.Term
 	reply.VoteGranted = false
 
-	fmt.Printf("Received vote from [%d] with [%#v] \n",args.CandidateId, args)
+	//fmt.Printf("Received vote from [%d] with [%#v] \n",args.CandidateId, args)
 
 
 	if args.Term < rf.currentTerm{
@@ -372,8 +372,8 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	// case 1: received reply.Success==false as reply, decrease the value of nextIndex,until it reach 1 (? does it will go down 1?)
 	if reply.Success == false{
 		rf.nextIndex[server] = rf.nextIndex[server] - 1
-		if rf.nextIndex[server] < 0{
-			//log.Fatalln("the value of nextIndex[server] goes under than 0")
+		if rf.nextIndex[server] < 1{
+			log.Fatalln("the value of nextIndex[server] goes under than 1")
 		}
 		return
 	}
@@ -702,7 +702,7 @@ func (rf *Raft) broadcastAppendEntries()  {
 			println("")
 		}
 
-		fmt.Printf("[%#v] : Sending [%#v] to server [%#v] \n", rf.me, args.Entries, i)
+		fmt.Printf("[%#v] term : [%#v]: Sending [%#v] to server [%#v] \n", rf.me, rf.currentTerm, args.Entries, i)
 
 		go rf.sendAppendEntries(i, &args, &AppendEntriesReply{}, &successCnt)
 	}
@@ -842,6 +842,7 @@ func (rf *Raft) updateStatus (status int32){
 		rf.status= Leader
 		rf.matchIndex = make([]int, len(rf.peers))
 		rf.nextIndex = make([]int, len(rf.peers))
+		fmt.Printf("I am leader right now, my id is [%#v] \n", rf.me)
 		for i := range rf.nextIndex {
 			rf.nextIndex[i] = len(rf.log) + 1
 			fmt.Printf("set the value of nextIndex[%#v] to be [%#v] \n", i , rf.nextIndex[i])
