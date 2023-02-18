@@ -611,7 +611,6 @@ func TestRejoin2B(t *testing.T) {
 	cfg.connect(leader1)
 
 	fmt.Printf("reconnect server [%d] \n", leader1)
-	time.Sleep(3000)
 	cfg.one(104, 2, true)
 
 	// all together now
