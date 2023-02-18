@@ -684,7 +684,6 @@ func (rf *Raft) broadcastAppendEntries()  {
 		}
 
 		//temp := int(math.Max(float64(rf.nextIndex[i]-1), 1))
-
 		preLogIdx := rf.nextIndex[i] - 1
 		//if len(rf.log) > 0{
 		//	preLogIdx = int(math.Min(float64(preLogIdx), float64(len(rf.log)-1)))
@@ -864,6 +863,7 @@ func (rf *Raft) updateStatus (status int32){
 		rf.status= Leader
 		rf.matchIndex = make([]int, len(rf.peers))
 		rf.nextIndex = make([]int, len(rf.peers))
+		fmt.Printf("[%#v] i am leader with term [%#v] with log [%#v] \n", rf.me, rf.currentTerm, rf.log)
 		for i := range rf.nextIndex {
 			rf.nextIndex[i] = len(rf.log) + 1
 			fmt.Printf("set the value of nextIndex[%#v] to be [%#v] \n", i , rf.nextIndex[i])
