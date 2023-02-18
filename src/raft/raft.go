@@ -97,7 +97,6 @@ type Raft struct {
 	// customized
 	status int32
 	timer  *time.Timer
-	cntVoted int
 
 
 	heartBeat chan bool
@@ -346,7 +345,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 // that the caller passes the address of the reply struct with &, not
 // the struct itself.
 //
-func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply){
+func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply, voteCount *int){
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
 	if !ok{
 		return
@@ -368,8 +367,9 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 
 	if reply.VoteGranted{
 		//log.Printf("[%d] received ticket in term [%d] from [%d] \n", rf.me , rf.currentTerm, server)
-		rf.cntVoted += 1
-		if rf.cntVoted > len(rf.peers) / 2{
+		*voteCount += 1
+		if *voteCount > len(rf.peers) / 2{
+			*voteCount = 0
 			rf.setElectionWin()
 		}
 	}
@@ -394,7 +394,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	}
 
 	if rf.currentTerm < reply.Term{
-		fmt.Printf("[%#v] : wtf i dropper from leader to follower, received the reply from [%#v] with term [%#v], my term is [%#v] \n",rf.me, server, reply.Term, rf.currentTerm)
+		fmt.Printf("[%#v] : wtf i dropper from leader to follower, received the reply from [%#v] with term [%#v], my term is [%#v]\n , damn my log is [%#v] \n",rf.me, server, reply.Term, rf.currentTerm , rf.log)
 		rf.currentTerm = reply.Term
 		rf.votedFor = -1
 		rf.setLeaderToFollower()
@@ -405,6 +405,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	// case 1: received reply.Success==false as reply, decrease the value of nextIndex,until it reach 1 (? does it will go down 1?)
 	if reply.Success == false{
 		rf.nextIndex[server] = rf.nextIndex[server] - 1
+		fmt.Printf("[%#v] 🔪🔪🔪 sending append entries to [%#v] fail with arg [%#v] \n", rf.me, server, args)
 		if rf.nextIndex[server] < 0{
 			//log.Fatalln("the value of nextIndex[server] goes under than 0")
 		}
@@ -619,8 +620,8 @@ func (rf *Raft) startElection()  {
 
 	rf.currentTerm += 1
 	rf.votedFor = rf.me
-	rf.cntVoted = 1
 
+	voteCount := 1
 	var args RequestVoteArgs
 	if len(rf.log) > 0{
 		entry := rf.log[len(rf.log) - 1]
@@ -639,7 +640,7 @@ func (rf *Raft) startElection()  {
 		if i == rf.me{
 			continue
 		}
-		go rf.sendRequestVote(i, &args , &RequestVoteReply{})
+		go rf.sendRequestVote(i, &args , &RequestVoteReply{}, &voteCount)
 	}
 
 
@@ -871,7 +872,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	reply.Success = false
 	//var isEmpty = len(rf.log) == 0
 
-	fmt.Printf("Append entry from [%#v] with data [%#v] \n", args.LeaderId , args)
+	fmt.Printf("[%#v] Append entry from [%#v] with data [%#v] \n",rf.me, args.LeaderId , args)
 	// case 0: if args.term < rf.currentTerm return false directly
 	if args.Term < rf.currentTerm{
 		// case 0: expired leader message
@@ -914,7 +915,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	// conflict 1: pre-log_index > rf.current_log
 	// truncate the rest of it, the same as the one in case 4
 	if len(rf.log) < args.PrevLogIndex{
-		println("refuse append entries case 1")
+		fmt.Printf("[%#v] : refuse append entries case 1 , current log [%#v] \n", rf.me, rf.log)
 		return
 	}
 
@@ -922,18 +923,28 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	// delete the existing entry and all that follow it
 
 	// conflict 2: unmatched log at the same index
+
+
 	if rf.log[args.PrevLogIndex - 1].Term != args.PrevLogTerm{
-		println("refuse append entries case 2")
+		fmt.Printf("[%#v] : refuse append entries case 3 , current log [%#v] \n", rf.me, rf.log)
 		rf.log = rf.log[:args.PrevLogIndex - 1]
 		return
+	}
+
+
+	if len(rf.log) > args.PrevLogIndex{
+		println("121212")
+		rf.log = rf.log[:args.PrevLogIndex]
 	}
 
 
 	// case 5: append any new entries not already in log, when the code move into this section
 	// it does guarantee that  rf.log[args.PrevLogIndex].Term == args.PrevLogTerm
 	reply.Success = true
+	//rf.log = rf.log[args.PrevLogIndex - 1:]
 	rf.log = append(rf.log, args.Entries...)
 
+	fmt.Printf("[%#v] : 🎉🎉🎉, current log [%#v] \n",rf.me, rf.log)
 
 	rf.commitLog(args)
 
@@ -964,7 +975,6 @@ func (rf *Raft) updateStatus (status int32){
 	case Follower:
 		rf.status = Follower
 	case Candidate:
-		rf.cntVoted = 1
 		rf.status = Candidate
 		fmt.Printf("[%#v] i start to do the election with term [%#v] and log [%#v] with detail [%#v] \n", rf.me, rf.currentTerm, len(rf.log), rf.log)
 	case Leader:

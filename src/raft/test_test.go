@@ -580,6 +580,12 @@ func TestFor2023TestLeaderFailure2B(t *testing.T) {
 	cfg.end()
 }
 
+func TestRejoin2BMany(t *testing.T){
+	for i := 0; i < 5; i++ {
+		TestRejoin2B(t)
+	}
+}
+
 func TestRejoin2B(t *testing.T) {
 	servers := 3
 	cfg := make_config(t, servers, false, false)
@@ -614,83 +620,88 @@ func TestRejoin2B(t *testing.T) {
 	cfg.one(104, 2, true)
 
 	// all together now
-	//cfg.connect(leader2)
-	//
-	//cfg.one(105, servers, true)
-	//
-	//cfg.end()
+	cfg.connect(leader2)
+	fmt.Printf("reconnect server step 2[%d] \n", leader2)
+
+	cfg.one(105, servers, true)
+
+	cfg.end()
+
 }
 
 func TestBackup2B(t *testing.T) {
-	servers := 5
-	cfg := make_config(t, servers, false, false)
-	defer cfg.cleanup()
+	for i := 0; i < 1; i++ {
+		servers := 5
+		cfg := make_config(t, servers, false, false)
+		defer cfg.cleanup()
 
-	cfg.begin("Test (2B): leader backs up quickly over incorrect follower logs")
+		cfg.begin("Test (2B): leader backs up quickly over incorrect follower logs")
 
-	cfg.one(rand.Int(), servers, true)
+		cfg.one(rand.Int(), servers, true)
 
-	// put leader and one follower in a partition
-	leader1 := cfg.checkOneLeader()
-	cfg.disconnect((leader1 + 2) % servers)
-	cfg.disconnect((leader1 + 3) % servers)
-	cfg.disconnect((leader1 + 4) % servers)
+		// put leader and one follower in a partition
+		leader1 := cfg.checkOneLeader()
+		cfg.disconnect((leader1 + 2) % servers)
+		cfg.disconnect((leader1 + 3) % servers)
+		cfg.disconnect((leader1 + 4) % servers)
 
-	// submit lots of commands that won't commit
-	for i := 0; i < 50; i++ {
-		cfg.rafts[leader1].Start(rand.Int())
+		// submit lots of commands that won't commit
+		for i := 0; i < 50; i++ {
+			cfg.rafts[leader1].Start(rand.Int())
+		}
+
+		time.Sleep(RaftElectionTimeout / 2)
+
+		cfg.disconnect((leader1 + 0) % servers)
+		cfg.disconnect((leader1 + 1) % servers)
+
+		// allow other partition to recover
+		cfg.connect((leader1 + 2) % servers)
+		cfg.connect((leader1 + 3) % servers)
+		cfg.connect((leader1 + 4) % servers)
+
+		// lots of successful commands to new group.
+		for i := 0; i < 50; i++ {
+			cfg.one(rand.Int(), 3, true)
+		}
+
+		// now another partitioned leader and one follower
+		leader2 := cfg.checkOneLeader()
+		other := (leader1 + 2) % servers
+		if leader2 == other {
+			other = (leader2 + 1) % servers
+		}
+		cfg.disconnect(other)
+
+		// lots more commands that won't commit
+		for i := 0; i < 50; i++ {
+			cfg.rafts[leader2].Start(rand.Int())
+		}
+
+		time.Sleep(RaftElectionTimeout / 2)
+
+		// bring original leader back to life,
+		for i := 0; i < servers; i++ {
+			cfg.disconnect(i)
+		}
+		cfg.connect((leader1 + 0) % servers)
+		cfg.connect((leader1 + 1) % servers)
+		cfg.connect(other)
+
+		// lots of successful commands to new group.
+		for i := 0; i < 50; i++ {
+			cfg.one(rand.Int(), 3, true)
+		}
+
+		// now everyone
+		for i := 0; i < servers; i++ {
+			cfg.connect(i)
+		}
+		cfg.one(rand.Int(), servers, true)
+
+		cfg.end()
 	}
 
-	time.Sleep(RaftElectionTimeout / 2)
-
-	cfg.disconnect((leader1 + 0) % servers)
-	cfg.disconnect((leader1 + 1) % servers)
-
-	// allow other partition to recover
-	cfg.connect((leader1 + 2) % servers)
-	cfg.connect((leader1 + 3) % servers)
-	cfg.connect((leader1 + 4) % servers)
-
-	// lots of successful commands to new group.
-	for i := 0; i < 50; i++ {
-		cfg.one(rand.Int(), 3, true)
-	}
-
-	// now another partitioned leader and one follower
-	leader2 := cfg.checkOneLeader()
-	other := (leader1 + 2) % servers
-	if leader2 == other {
-		other = (leader2 + 1) % servers
-	}
-	cfg.disconnect(other)
-
-	// lots more commands that won't commit
-	for i := 0; i < 50; i++ {
-		cfg.rafts[leader2].Start(rand.Int())
-	}
-
-	time.Sleep(RaftElectionTimeout / 2)
-
-	// bring original leader back to life,
-	for i := 0; i < servers; i++ {
-		cfg.disconnect(i)
-	}
-	cfg.connect((leader1 + 0) % servers)
-	cfg.connect((leader1 + 1) % servers)
-	cfg.connect(other)
-
-	// lots of successful commands to new group.
-	for i := 0; i < 50; i++ {
-		cfg.one(rand.Int(), 3, true)
-	}
-
-	// now everyone
-	for i := 0; i < servers; i++ {
-		cfg.connect(i)
-	}
-	cfg.one(rand.Int(), servers, true)
-
-	cfg.end()
 }
 
 
