@@ -581,8 +581,9 @@ func TestFor2023TestLeaderFailure2B(t *testing.T) {
 }
 
 func TestRejoin2BMany(t *testing.T){
-	for i := 0; i < 5; i++ {
-		TestRejoin2B(t)
+	for i := 0; i < 10; i++ {
+		TestFor2023TestLeaderFailure2B(t)
+		fmt.Printf("Current time [%#v] / [%#v] \n", i , 100)
 	}
 }
 

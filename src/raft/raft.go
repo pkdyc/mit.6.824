@@ -379,10 +379,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply, successCnt *int){
 	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
 	for !ok{
-		if rf.killed(){
-			return
-		}
-		ok = rf.peers[server].Call("Raft.AppendEntries", args, reply)
+		return
 	}
 
 	rf.mu.Lock()
