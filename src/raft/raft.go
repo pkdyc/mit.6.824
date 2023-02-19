@@ -250,7 +250,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	reply.Term = args.Term
 	reply.VoteGranted = false
 
-	fmt.Printf("Received vote from [%d] with [%#v] \n",args.CandidateId, args)
+	fmt.Printf("[%#v]: Received vote from [%d] with [%#v] \n",rf.me, args.CandidateId, args)
 
 
 	if args.Term < rf.currentTerm{
@@ -271,9 +271,10 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		changeStatus = true
 
 		if len(rf.log) == 0 {
-			println("winning case 0")
+			fmt.Printf("[%#v]: winning case 0 [%d] with [%#v] \n",rf.me, args.CandidateId, args)
 			rf.votedFor = args.CandidateId
 			reply.VoteGranted = true
+			rf.setHeartBeat()
 			return
 		}
 	}
@@ -292,6 +293,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		// case 1 : different term:
 		if int(args.LastLogTerm) > entry.Term{
 			println("winning case 1")
+			rf.setHeartBeat()
 
 			rf.votedFor = args.CandidateId
 			reply.VoteGranted = true
@@ -299,17 +301,20 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			if changeStatus == false{
 				rf.requestVoteGranted()
 			}
+			return
 
 		}
 		// case 2: same term, but with greater log index
 		if int(args.LastLogTerm) == entry.Term && args.LastLogIndex >= entry.Index{
 			println("winning case 2")
+			rf.setHeartBeat()
 			rf.votedFor = args.CandidateId
 			reply.VoteGranted = true
 
 			if changeStatus == false{
 				rf.requestVoteGranted()
 			}
+			return
 		}
 	}
 
@@ -348,6 +353,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply, voteCount *int){
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
 	if !ok{
+		fmt.Printf("[%#v] : 🤔🤔🤔 sending to [%#v] failed with args [%#v] , damn my log is [%#v] \n",rf.me, server, args, rf.log)
 		return
 	}
 
@@ -410,17 +416,23 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	}
 	if reply.Success == true && reply.Term == rf.currentTerm{
 		*successCnt += 1
+		temp := rf.nextIndex[server]
 		rf.matchIndex[server] = len(rf.log)
+
 		if len(rf.log) > 0{
 			rf.nextIndex[server] = rf.matchIndex[server] + 1
 		}
+		fmt.Printf("[%#v] :  🌰🌰🌰 received success from [%#v], with args [%#v] update matchIndex from [%#v] to [%#v]\n", rf.me, server,args, temp,rf.nextIndex[server] )
+
 	}
 	//fmt.Printf("Success Current [%#v] in Term [%#v] \n", *successCnt, rf.currentTerm)
 
 
 	if *successCnt > len(rf.peers) / 2{
+		fmt.Printf("🐴🐴 able to commit !!! current log len [%d], lastApplied [%#v] \n", len(rf.log), rf.lastApplied)
 		*successCnt = 0
 		if len(rf.log) == 0 || rf.log[len(rf.log) - 1].Term != int(rf.currentTerm) {
+			println("💔💔💔 wtf??? commit failed")
 			return
 		}
 
@@ -433,6 +445,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 			}
 			rf.applyCh <- applyMsg
 			rf.commitIndex = rf.lastApplied
+			fmt.Printf("😄😄😄 commit [%#v] successfully \n",rf.log[rf.lastApplied-1])
 		}
 	}
 
@@ -603,7 +616,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 func randTime() time.Duration  {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	return time.Millisecond * time.Duration((r.Intn(150)) + 150)
+	return time.Millisecond * time.Duration((r.Intn(150)) + 150	)
 }
 
 func (rf *Raft) startElection()  {
@@ -675,35 +688,6 @@ func (rf *Raft) broadcastAppendEntries()  {
 			continue
 		}
 
-		//args := AppendEntriesArgs{
-		//	Term:         rf.currentTerm,
-		//	LeaderId:     rf.me,
-		//	PrevLogIndex: 0,
-		//	PrevLogTerm:  0,
-		//	Entries:      nil,
-		//	LeaderCommit: rf.commitIndex, // commitIndex为大多数log所认可的commitIndex
-		//}
-		//
-		//reply := AppendEntriesReply{}
-		//
-		//args.Entries = rf.log[rf.nextIndex[i]-1:]
-		//
-		//
-		//if rf.nextIndex[i] > 0 {
-		//	args.PrevLogIndex = rf.nextIndex[i] - 1
-		//}
-		//
-		//if args.PrevLogIndex > 0 {
-		//	//fmt.Println("len(rf.log):", len(rf.logs), "PrevLogIndex):", args.PrevLogIndex, "rf.nextIndex[i]", rf.nextIndex[i])
-		//	args.PrevLogTerm = rf.log[args.PrevLogIndex-1].Term
-		//}
-		//
-		////fmt.Printf("[	ticker(%v) ] : send a election to %v\n", rf.me, i)
-		//go rf.sendAppendEntries(i, &args, &reply, &successCnt)
-
-
-
-		//temp := int(math.Max(float64(rf.nextIndex[i]-1), 1))
 		nextIndex := rf.nextIndex[i]
 		preLogIdx := nextIndex - 1 // follower上一个log的index编号， 也就是rf.log[i:] 中 i需要用到的值
 
@@ -716,11 +700,11 @@ func (rf *Raft) broadcastAppendEntries()  {
 				LeaderId: rf.me,
 				PrevLogTerm: 0,
 				PrevLogIndex: 0,
-				Entries: rf.log[preLogIdx:],
 				LeaderCommit: rf.commitIndex,
 			}
+			args.Entries = append(args.Entries, rf.log[preLogIdx:]...)
 			go rf.sendAppendEntries(i, &args, &AppendEntriesReply{}, &successCnt)
-			fmt.Printf("[%#v] : Sending [%#v] to server [%#v] \n 😅😅😅 my own log is [%#v] \n", rf.me, args.Entries, i, rf.log)
+			fmt.Printf("[%#v] :case log empty: Sending to server [%#v] with data: [%#v] \n 😅😅😅 my own log is [%#v] \n", rf.me,i, args, rf.log)
 			continue
 
 		} else {
@@ -731,55 +715,17 @@ func (rf *Raft) broadcastAppendEntries()  {
 				LeaderId: rf.me,
 				PrevLogTerm: entry.Term,
 				PrevLogIndex: entry.Index,
-				Entries: rf.log[preLogIdx:],
 				LeaderCommit: rf.commitIndex,
 			}
+			args.Entries = append(args.Entries, rf.log[preLogIdx:]...)
 			go rf.sendAppendEntries(i, &args, &AppendEntriesReply{}, &successCnt)
-			fmt.Printf("[%#v] : Sending [%#v] to server [%#v] \n 😅😅😅 my own log is [%#v] \n", rf.me, args.Entries, i, rf.log)
+			fmt.Printf("[%#v] :case log not empty: Sending to server [%#v] with data: [%#v] \n 😅😅😅 my own log is [%#v] \n", rf.me,i, args, rf.log)
 			continue
 
 		}
 
 
 
-
-		// case 1:
-
-
-		//if len(rf.log) > 0{
-		//	preLogIdx = int(math.Min(float64(preLogIdx), float64(len(rf.log)-1)))
-		//	println("this is my bad")
-		//}
-		//if preLogIdx > len(rf.log) - 1{
-		//	preLogIdx = len(rf.log)
-		//	idx := len(rf.log) - 1
-		//
-		//
-		//	go rf.sendAppendEntries(i, &args, &AppendEntriesReply{}, &successCnt)
-		//	continue
-		//}
-		//
-		//entry := rf.log[preLogIdx]
-		//args := AppendEntriesArgs{
-		//	Term: rf.currentTerm,
-		//	LeaderId: rf.me,
-		//	PrevLogTerm: entry.Term,
-		//	PrevLogIndex: preLogIdx,
-		//	Entries: rf.log[preLogIdx:],
-		//	LeaderCommit: rf.commitIndex,
-		//}
-		//
-		//if len(rf.log) == 1{
-		//	println("")
-		//}
-		//
-		//if len(rf.log) == 2{
-		//	println("")
-		//}
-		//
-		//fmt.Printf("[%#v] : Sending [%#v] to server [%#v] \n", rf.me, args.Entries, i)
-		//
-		//go rf.sendAppendEntries(i, &args, &AppendEntriesReply{}, &successCnt)
 	}
 
 }
@@ -816,53 +762,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	rf.setHeartBeat()
 
-	// 出现conflict的情况
-	// paper:Reply false if log doesn’t contain an entry at prevLogIndex,whose term matches prevLogTerm (§5.3)
-	// 首先要保证自身len(rf)大于0否则数组越界
-	// 1、 如果preLogIndex的大于当前日志的最大的下标说明跟随者缺失日志，拒绝附加日志
-	// 2、 如果preLog出`的任期和preLogIndex处的任期和preLogTerm不相等，那么说明日志存在conflict,拒绝附加日志
-	//if args.PrevLogIndex > 0 && (len(rf.log) < args.PrevLogIndex || rf.log[args.PrevLogIndex-1].Term != args.PrevLogTerm) {
-	//
-	//	reply.Term = rf.currentTerm
-	//	reply.Success = false
-	//	return
-	//}
-	//
-	//// 如果当前节点提交的Index比传过来的还高，说明当前节点的日志已经超前,需返回过去
-	//if args.PrevLogIndex != -1 && rf.lastApplied > args.PrevLogIndex {
-	//	reply.Term = rf.currentTerm
-	//	reply.Success = false
-	//	return
-	//}
-	//
-	//// 对当前的rf进行ticker重置
-	//rf.currentTerm = args.Term
-	//rf.votedFor = args.LeaderId
-	//rf.status = Follower
-	//
-	//// 对返回的reply进行赋值
-	//reply.Term = rf.currentTerm
-	//reply.Success = true
-	//
-	//// 如果存在日志包那么进行追加
-	//if args.Entries != nil {
-	//	rf.log = rf.log[:args.PrevLogIndex]
-	//	rf.log = append(rf.log, args.Entries...)
-	//
-	//}
-	//
-	//// 将日志提交至与Leader相同
-	//for rf.lastApplied < args.LeaderCommit {
-	//	rf.lastApplied++
-	//	applyMsg := ApplyMsg{
-	//		CommandValid: true,
-	//		CommandIndex: rf.lastApplied,
-	//		Command:      rf.log[rf.lastApplied-1].Command,
-	//	}
-	//	rf.applyCh <- applyMsg
-	//	rf.commitIndex = rf.lastApplied
-	//	//fmt.Printf("[	AppendEntries func-rf(%v)	] commitLog  \n", rf.me)
-	//}
 
 	//log.Printf("[%d] received heartbeat in term [%d] from [%d] with term [%d] \n", rf.me , rf.currentTerm, args.LeaderId, args.Term)
 	reply.Term = rf.currentTerm
@@ -878,8 +777,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		return
 	}
 
-
-
 	// case 1: follow the leader
 	if args.Term > rf.currentTerm {
 		// case 1: receive message from leader with greater term
@@ -894,16 +791,22 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 
 
-	rf.setHeartBeat()
+	if args.PrevLogIndex > len(rf.log){
+		fmt.Printf("[%#v] : refuse append entries case 0 , current log [%#v] \n", rf.me, rf.log)
+		return
+	}
+
 
 
 
 	// special case: the node is totally empty
-	if len(rf.log) == 0{
+	if args.PrevLogIndex == 0{
 		rf.log = append(rf.log, args.Entries...)
 		reply.Success = true
 
 		rf.commitLog(args)
+		fmt.Printf("[%#v] : 🎉🎉🎉, current log [%#v] \n",rf.me, rf.log)
+
 		return
 	}
 
@@ -930,7 +833,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 
 	if len(rf.log) > args.PrevLogIndex{
-		println("121212")
 		rf.log = rf.log[:args.PrevLogIndex]
 	}
 
