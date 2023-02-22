@@ -18,6 +18,8 @@ package raft
 //
 
 import (
+	"6.824/labgob"
+	"bytes"
 	"fmt"
 	"log"
 	"math"
@@ -119,6 +121,7 @@ func (rf *Raft) GetState() (int, bool) {
 	var term = rf.currentTerm
 	var isleader = rf.status == Leader
 	// Your code here (2A).
+	rf.persist()
 
 	return int(term), isleader
 }
@@ -131,12 +134,27 @@ func (rf *Raft) GetState() (int, bool) {
 func (rf *Raft) persist() {
 	// Your code here (2C).
 	// Example:
-	// w := new(bytes.Buffer)
-	// e := labgob.NewEncoder(w)
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	err := e.Encode(rf.currentTerm)
+	if err != nil {
+		log.Fatal("rf write persist err!")
+		return
+	}
+	err = e.Encode(rf.log)
+	if err != nil {
+		log.Fatal("rf write persist err!")
+		return
+	}
+	err = e.Encode(rf.votedFor)
+	if err != nil {
+		log.Fatal("rf write persist err!")
+		return
+	}
 	// e.Encode(rf.xxx)
 	// e.Encode(rf.yyy)
-	// data := w.Bytes()
-	// rf.persister.SaveRaftState(data)
+	data := w.Bytes()
+	rf.persister.SaveRaftState(data)
 }
 
 
@@ -149,17 +167,25 @@ func (rf *Raft) readPersist(data []byte) {
 	}
 	// Your code here (2C).
 	// Example:
-	// r := bytes.NewBuffer(data)
-	// d := labgob.NewDecoder(r)
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
 	// var xxx
 	// var yyy
-	// if d.Decode(&xxx) != nil ||
-	//    d.Decode(&yyy) != nil {
-	//   error...
-	// } else {
-	//   rf.xxx = xxx
-	//   rf.yyy = yyy
-	// }
+	err := d.Decode(&rf.currentTerm)
+	if err != nil {
+		log.Fatal("rf read persist err!")
+		return
+	}
+	err = d.Decode(&rf.log)
+	if err != nil {
+		log.Fatal("rf read persist err!")
+		return
+	}
+	err = d.Decode(&rf.votedFor)
+	if err != nil {
+		log.Fatal("rf read persist err!")
+		return
+	}
 }
 
 
@@ -214,6 +240,7 @@ type AppendEntriesArgs struct {
 	PrevLogTerm  int
 	Entries   []LogEntry
 	LeaderCommit int
+	LeaderLength int
 }
 
 type AppendEntriesReply struct {
@@ -269,12 +296,14 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.votedFor = -1
 		rf.requestVoteGranted()
 		changeStatus = true
+		rf.persist()
 
 		if len(rf.log) == 0 {
 			fmt.Printf("[%#v]: winning case 0 [%d] with [%#v] \n",rf.me, args.CandidateId, args)
 			rf.votedFor = args.CandidateId
 			reply.VoteGranted = true
 			rf.setHeartBeat()
+			rf.persist()
 			return
 		}
 	}
@@ -297,7 +326,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 			rf.votedFor = args.CandidateId
 			reply.VoteGranted = true
-
+			rf.persist()
 			if changeStatus == false{
 				rf.requestVoteGranted()
 			}
@@ -310,7 +339,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			rf.setHeartBeat()
 			rf.votedFor = args.CandidateId
 			reply.VoteGranted = true
-
+			rf.persist()
 			if changeStatus == false{
 				rf.requestVoteGranted()
 			}
@@ -368,6 +397,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 		rf.currentTerm = reply.Term
 		rf.votedFor = -1
 		rf.setCandidateToFollower()
+		rf.persist()
 		return
 	}
 
@@ -401,6 +431,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 		rf.currentTerm = reply.Term
 		rf.votedFor = -1
 		rf.setLeaderToFollower()
+		rf.persist()
 
 	}
 
@@ -409,7 +440,8 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	if reply.Success == false{
 		rf.nextIndex[server] = rf.nextIndex[server] - 1
 		fmt.Printf("[%#v] 🔪🔪🔪 sending append entries to [%#v] fail with arg [%#v] \n", rf.me, server, args)
-		if rf.nextIndex[server] < 0{
+		if rf.nextIndex[server] < 1{
+			rf.nextIndex[server] = 1
 			//log.Fatalln("the value of nextIndex[server] goes under than 0")
 		}
 		return
@@ -419,11 +451,13 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 		temp := rf.nextIndex[server]
 		rf.matchIndex[server] = len(rf.log)
 
-		if len(rf.log) > 0{
+		if args.LeaderLength > 0{
 			rf.nextIndex[server] = rf.matchIndex[server] + 1
-		}
-		fmt.Printf("[%#v] :  🌰🌰🌰 received success from [%#v], with args [%#v] update matchIndex from [%#v] to [%#v]\n", rf.me, server,args, temp,rf.nextIndex[server] )
+			fmt.Printf("[%#v] :  🌰🌰🌰 received success from [%#v], with args [%#v] update matchIndex from [%#v] to [%#v]\n", rf.me, server,args, temp,rf.nextIndex[server] )
+		}else{
+			fmt.Printf("[%#v] :  🌰🌰🌰 received heartbeat success from [%#v], with args [%#v] dont update matchIndex from [%#v] to [%#v]\n", rf.me, server,args, temp,rf.nextIndex[server] )
 
+		}
 	}
 	//fmt.Printf("Success Current [%#v] in Term [%#v] \n", *successCnt, rf.currentTerm)
 
@@ -431,12 +465,13 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	if *successCnt > len(rf.peers) / 2{
 		fmt.Printf("🐴🐴 able to commit !!! current log len [%d], lastApplied [%#v] \n", len(rf.log), rf.lastApplied)
 		*successCnt = 0
-		if len(rf.log) == 0 || rf.log[len(rf.log) - 1].Term != int(rf.currentTerm) {
+
+		if args.LeaderLength == 0 || rf.log[args.LeaderLength - 1].Term != int(rf.currentTerm) {
 			println("💔💔💔 wtf??? commit failed")
 			return
 		}
 
-		for rf.lastApplied < len(rf.log) {
+		for rf.lastApplied < args.LeaderLength {
 			rf.lastApplied++
 			applyMsg := ApplyMsg{
 				CommandValid: true,
@@ -496,15 +531,17 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		var term = int(rf.currentTerm)
 		var isLeader = rf.status == Leader  // must be true
 		fmt.Printf("[%#v] [%#v] [%#v] leader id [%#v] with value [%#v]\n", index, term, isLeader, rf.me, command)
+		rf.persist()
 		return index, term, isLeader
 	}
+
 
 	// Your code here (2B).
 
 
 }
 
-//
+// Kill
 // the tester doesn't halt goroutines created by Raft after each test,
 // but it does call the Kill() method. your code can use killed() to
 // check whether Kill() has been called. the use of atomic avoids the
@@ -606,7 +643,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.timer = time.NewTimer(randTime())
 
 	rf.readPersist(persister.ReadRaftState())
-
 	// start ticker goroutine to start elections
 	go rf.ticker()
 
@@ -630,6 +666,7 @@ func (rf *Raft) startElection()  {
 
 	rf.currentTerm += 1
 	rf.votedFor = rf.me
+	rf.persist()
 
 	voteCount := 1
 	var args RequestVoteArgs
@@ -701,6 +738,7 @@ func (rf *Raft) broadcastAppendEntries()  {
 				PrevLogTerm: 0,
 				PrevLogIndex: 0,
 				LeaderCommit: rf.commitIndex,
+				LeaderLength: len(rf.log),
 			}
 			args.Entries = append(args.Entries, rf.log[preLogIdx:]...)
 			go rf.sendAppendEntries(i, &args, &AppendEntriesReply{}, &successCnt)
@@ -716,6 +754,7 @@ func (rf *Raft) broadcastAppendEntries()  {
 				PrevLogTerm: entry.Term,
 				PrevLogIndex: entry.Index,
 				LeaderCommit: rf.commitIndex,
+				LeaderLength: len(rf.log),
 			}
 			args.Entries = append(args.Entries, rf.log[preLogIdx:]...)
 			go rf.sendAppendEntries(i, &args, &AppendEntriesReply{}, &successCnt)
@@ -752,21 +791,10 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	defer rf.mu.Unlock()
 
 
-	//  args.Term < rf.currentTerm:出现网络分区，args的任期，比当前raft的任期还小，说明args之前所在的分区已经OutOfDate 2A
-	if args.Term < rf.currentTerm {
-		reply.Term = rf.currentTerm
-		reply.Success = false
-
-		return
-	}
-
-	rf.setHeartBeat()
-
-
 	//log.Printf("[%d] received heartbeat in term [%d] from [%d] with term [%d] \n", rf.me , rf.currentTerm, args.LeaderId, args.Term)
 	reply.Term = rf.currentTerm
 	reply.Success = false
-	//var isEmpty = len(rf.log) == 0
+
 
 	fmt.Printf("[%#v] Append entry from [%#v] with data [%#v] \n",rf.me, args.LeaderId , args)
 	// case 0: if args.term < rf.currentTerm return false directly
@@ -777,12 +805,15 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		return
 	}
 
+
+	rf.setHeartBeat()
 	// case 1: follow the leader
 	if args.Term > rf.currentTerm {
 		// case 1: receive message from leader with greater term
 		fmt.Printf("damn it bruh, i am [%d]\n", rf.me)
 		rf.currentTerm = args.Term
 		rf.votedFor = args.LeaderId
+		rf.persist()
 		if rf.status == Candidate {
 			rf.setCandidateToFollower()
 		} else if rf.status == Leader {
@@ -791,22 +822,28 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 
 
-	if args.PrevLogIndex > len(rf.log){
-		fmt.Printf("[%#v] : refuse append entries case 0 , current log [%#v] \n", rf.me, rf.log)
-		return
-	}
-
-
-
 
 	// special case: the node is totally empty
 	if args.PrevLogIndex == 0{
-		rf.log = append(rf.log, args.Entries...)
-		reply.Success = true
+		if len(rf.log) == 0{
+			rf.log = append(rf.log, args.Entries...)
+			reply.Success = true
 
-		rf.commitLog(args)
-		fmt.Printf("[%#v] : 🎉🎉🎉, current log [%#v] \n",rf.me, rf.log)
+			rf.commitLog(args)
+			fmt.Printf("[%#v] : 🎉🎉🎉, current log [%#v] \n",rf.me, rf.log)
+			rf.persist()
+			return
+		}else {
+			rf.log = nil
+			rf.persist()
+			println("!!! fuck yeah, how is that even possible !!!")
+			return
+		}
 
+	}
+
+	if args.PrevLogIndex > len(rf.log){
+		fmt.Printf("[%#v] : refuse append entries case 0 , current log [%#v] \n", rf.me, rf.log)
 		return
 	}
 

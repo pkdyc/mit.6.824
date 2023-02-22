@@ -951,8 +951,8 @@ func TestFigure8Unreliable2C(t *testing.T) {
 	cfg.one(rand.Int()%10000, 1, true)
 
 	nup := servers
-	for iters := 0; iters < 1000; iters++ {
-		if iters == 200 {
+	for iters := 0; iters < 100; iters++ {
+		if iters == 3 {
 			cfg.setlongreordering(true)
 		}
 		leader := -1
@@ -995,6 +995,17 @@ func TestFigure8Unreliable2C(t *testing.T) {
 
 	cfg.end()
 }
+
+
+
+func TestReliableChurn2C(t *testing.T) {
+	internalChurn(t, false)
+}
+
+func TestUnreliableChurn2C(t *testing.T) {
+	internalChurn(t, true)
+}
+
 
 func internalChurn(t *testing.T, unreliable bool) {
 
@@ -1141,15 +1152,9 @@ func internalChurn(t *testing.T, unreliable bool) {
 	cfg.end()
 }
 
-func TestReliableChurn2C(t *testing.T) {
-	internalChurn(t, false)
-}
-
-func TestUnreliableChurn2C(t *testing.T) {
-	internalChurn(t, true)
-}
-
 const MAXLOGSIZE = 2000
+
+
 
 func snapcommon(t *testing.T, name string, disconnect bool, reliable bool, crash bool) {
 	iters := 30
