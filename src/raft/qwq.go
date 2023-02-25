@@ -8,11 +8,11 @@ package raft
 //// rf = Make(...)
 ////   create a new Raft server.
 //// rf.Start(command interface{}) (index, term, isleader)
-////   start agreement on a new log entry
+////   start agreement on a new logs entry
 //// rf.GetStatus() (term, isLeader)
 ////   ask a Raft for its current term, and whether it thinks it is leader
 //// ApplyMsg
-////   each time a new entry is committed to the log, each Raft peer
+////   each time a new entry is committed to the logs, each Raft peer
 ////   should send an ApplyMsg to the service (or tester)
 ////   in the same server.
 ////
@@ -70,11 +70,11 @@ package raft
 //}
 //
 //// ApplyMsg
-//// as each Raft peer becomes aware that successive log entries are
+//// as each Raft peer becomes aware that successive logs entries are
 //// committed, the peer should send an ApplyMsg to the service (or
 //// tester) on the same server, via the applyCh passed to Make(). set
 //// CommandValid to true to indicate that the ApplyMsg contains a newly
-//// committed log entry.
+//// committed logs entry.
 ////
 //// in part 2D you'll want to send other kinds of messages (e.g.,
 //// snapshots) on the applyCh, but set CommandValid to false for these
@@ -168,7 +168,7 @@ package raft
 //
 //type AppendEntriesReply struct {
 //	Term        int                // leader的term可能是过时的，此时收到的Term用于更新他自己
-//	Success     bool               //	如果follower与Args中的PreLogIndex/PreLogTerm都匹配才会接过去新的日志（追加），不匹配直接返回false
+//	VoteSuccess     bool               //	如果follower与Args中的PreLogIndex/PreLogTerm都匹配才会接过去新的日志（追加），不匹配直接返回false
 //	AppState    AppendEntriesState // 追加状态
 //	UpNextIndex int                //  用于更新请求节点的nextIndex[i]
 //}
@@ -306,7 +306,7 @@ package raft
 //					}
 //
 //					if args.PrevLogIndex > 0 {
-//						//fmt.Println("len(rf.log):", len(rf.logs), "PrevLogIndex):", args.PrevLogIndex, "rf.nextIndex[i]", rf.nextIndex[i])
+//						//fmt.Println("len(rf.logs):", len(rf.logs), "PrevLogIndex):", args.PrevLogIndex, "rf.nextIndex[i]", rf.nextIndex[i])
 //						args.PrevLogTerm = rf.logs[args.PrevLogIndex-1].Term
 //					}
 //
@@ -464,7 +464,7 @@ package raft
 //			lastLogTerm = rf.logs[len(rf.logs)-1].Term
 //		}
 //
-//		//  If votedFor is null or candidateId, and candidate’s log is at least as up-to-date as receiver’s log, grant vote (§5.2, §5.4)
+//		//  If votedFor is null or candidateId, and candidate’s logs is at least as up-to-date as receiver’s logs, grant vote (§5.2, §5.4)
 //		// 论文里的第二个匹配条件，当前peer要符合arg两个参数的预期*
 //		// 这里是一个重点，卡这里导致 lab2b rejoin of partitioned leader/ backs up没pass
 //		// 1、args.LastLogTerm < lastLogTerm是因为选举时应该首先看term，只要term大的，才代表存活在raft中越久
@@ -546,7 +546,7 @@ package raft
 //
 //			// 2A的test目的是让Leader能不能连续任期，所以2A只需要对节点初始化然后返回就好
 //			// 2B需要判断返回的节点是否超过半数commit，才能将自身commit
-//			if reply.Success && reply.Term == rf.currentTerm && *appendNums <= len(rf.peers)/2 {
+//			if reply.VoteSuccess && reply.Term == rf.currentTerm && *appendNums <= len(rf.peers)/2 {
 //				*appendNums++
 //			}
 //
@@ -576,7 +576,7 @@ package raft
 //				}
 //
 //			}
-//			//fmt.Printf("[	sendAppendEntries func-rf(%v)	] rf.log :%+v  ; rf.lastApplied:%v\n",
+//			//fmt.Printf("[	sendAppendEntries func-rf(%v)	] rf.logs :%+v  ; rf.lastApplied:%v\n",
 //			//	rf.me, rf.logs, rf.lastApplied)
 //
 //			return
@@ -617,7 +617,7 @@ package raft
 //	if rf.killed() {
 //		reply.AppState = AppKilled
 //		reply.Term = -1
-//		reply.Success = false
+//		reply.VoteSuccess = false
 //		return
 //	}
 //
@@ -625,13 +625,13 @@ package raft
 //	if args.Term < rf.currentTerm {
 //		reply.AppState = AppOutOfDate
 //		reply.Term = rf.currentTerm
-//		reply.Success = false
+//		reply.VoteSuccess = false
 //
 //		return
 //	}
 //
 //	// 出现conflict的情况
-//	// paper:Reply false if log doesn’t contain an entry at prevLogIndex,whose term matches prevLogTerm (§5.3)
+//	// paper:Reply false if logs doesn’t contain an entry at prevLogIndex,whose term matches prevLogTerm (§5.3)
 //	// 首先要保证自身len(rf)大于0否则数组越界
 //	// 1、 如果preLogIndex的大于当前日志的最大的下标说明跟随者缺失日志，拒绝附加日志
 //	// 2、 如果preLog出`的任期和preLogIndex处的任期和preLogTerm不相等，那么说明日志存在conflict,拒绝附加日志
@@ -639,7 +639,7 @@ package raft
 //
 //		reply.AppState = Mismatch
 //		reply.Term = rf.currentTerm
-//		reply.Success = false
+//		reply.VoteSuccess = false
 //		reply.UpNextIndex = rf.lastApplied + 1
 //		return
 //	}
@@ -648,7 +648,7 @@ package raft
 //	if args.PrevLogIndex != -1 && rf.lastApplied > args.PrevLogIndex {
 //		reply.AppState = AppCommitted
 //		reply.Term = rf.currentTerm
-//		reply.Success = false
+//		reply.VoteSuccess = false
 //		reply.UpNextIndex = rf.lastApplied + 1
 //		return
 //	}
@@ -662,7 +662,7 @@ package raft
 //	// 对返回的reply进行赋值
 //	reply.AppState = AppNormal
 //	reply.Term = rf.currentTerm
-//	reply.Success = true
+//	reply.VoteSuccess = true
 //
 //	// 如果存在日志包那么进行追加
 //	if args.Entries != nil {
@@ -711,10 +711,10 @@ package raft
 //
 //// Start
 //// the service using Raft (e.g. a k/v server) wants to start
-//// agreement on the next command to be appended to Raft's log. if this
+//// agreement on the next command to be appended to Raft's logs. if this
 //// server isn't the leader, returns false. otherwise start the
 //// agreement and return immediately. there is no guarantee that this
-//// command will ever be committed to the Raft log, since the leader
+//// command will ever be committed to the Raft logs, since the leader
 //// may fail or lose an election. even if the Raft instance has been killed,
 //// this function should return gracefully.
 ////
@@ -805,8 +805,8 @@ package raft
 //
 //// the service says it has created a snapshot that has
 //// all info up to and including index. this means the
-//// service no longer needs the log through (and including)
-//// that index. Raft should now trim its log as much as possible.
+//// service no longer needs the logs through (and including)
+//// that index. Raft should now trim its logs as much as possible.
 //func (rf *Raft) Snapshot(index int, snapshot []byte) {
 //	// Your code here (2D).
 //
