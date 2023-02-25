@@ -162,7 +162,7 @@ package raft
 //	LeaderId     int        // leader自身的ID
 //	PrevLogIndex int        // 预计要从哪里追加的index，因此每次要比当前的len(logs)多1 args初始化为：rf.nextIndex[i] - 1
 //	PrevLogTerm  int        // 追加新的日志的任期号(这边传的应该都是当前leader的任期号 args初始化为：rf.currentTerm
-//	Entries      []LogEntry // 预计存储的日志（为空时就是心跳连接）
+//	Logs      []LogEntry // 预计存储的日志（为空时就是心跳连接）
 //	LeaderCommit int        // leader的commit index指的是最后一个被大多数机器都复制的日志Index
 //}
 //
@@ -290,7 +290,7 @@ package raft
 //						LeaderId:     rf.me,
 //						PrevLogIndex: 0,
 //						PrevLogTerm:  0,
-//						Entries:      nil,
+//						Logs:      nil,
 //						LeaderCommit: rf.commitIndex, // commitIndex为大多数log所认可的commitIndex
 //					}
 //
@@ -298,7 +298,7 @@ package raft
 //
 //					// 如果nextIndex[i]长度不等于rf.logs,代表与leader的log entries不一致，需要附带过去
 //
-//					args.Entries = rf.logs[rf.nextIndex[i]-1:]
+//					args.Logs = rf.logs[rf.nextIndex[i]-1:]
 //
 //					// 代表已经不是初始值0
 //					if rf.nextIndex[i] > 0 {
@@ -554,7 +554,7 @@ package raft
 //			if rf.nextIndex[server] > len(rf.logs)+1 {
 //				return
 //			}
-//			rf.nextIndex[server] += len(args.Entries)
+//			rf.nextIndex[server] += len(args.Logs)
 //			if *appendNums > len(rf.peers)/2 {
 //				// 保证幂等性，不会提交第二次
 //				*appendNums = 0
@@ -665,9 +665,9 @@ package raft
 //	reply.VoteSuccess = true
 //
 //	// 如果存在日志包那么进行追加
-//	if args.Entries != nil {
+//	if args.Logs != nil {
 //		rf.logs = rf.logs[:args.PrevLogIndex]
-//		rf.logs = append(rf.logs, args.Entries...)
+//		rf.logs = append(rf.logs, args.Logs...)
 //
 //	}
 //
