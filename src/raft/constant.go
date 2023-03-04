@@ -189,7 +189,7 @@ type RequestVoteArgs struct {
 	LastLogTerm  int // 用于选举限制，LogEntry中最后log的Term
 }
 
-//
+// RequestVoteReply
 // example RequestVote RPC reply structure.
 // field names must start with capital letters!
 //
@@ -230,21 +230,20 @@ type AppendEntriesReply struct {
 
 
 func (rf *Raft) persist() {
-	// Your code here (2C).
-	// Example:
-	// w := new(bytes.Buffer)
-	// e := labgob.NewEncoder(w)
-	// e.Encode(rf.xxx)
-	// e.Encode(rf.yyy)
-	// data := w.Bytes()
-	// rf.persister.SaveRaftState(data)
+	data := rf.getPersistData()
+	rf.persister.SaveRaftState(data)
+}
+
+func (rf *Raft) getPersistData() []byte{
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)
 	e.Encode(rf.currentTerm)
 	e.Encode(rf.voteFor)
 	e.Encode(rf.logs)
+	e.Encode(rf.lastSnapshotIndex)
+	e.Encode(rf.lastSnapshotTerm)
 	data := w.Bytes()
-	rf.persister.SaveRaftState(data)
+	return data
 }
 
 //
@@ -254,34 +253,30 @@ func (rf *Raft) readPersist(data []byte) {
 	if data == nil || len(data) < 1 { // bootstrap without any state?
 		return
 	}
-	// Your code here (2C).
-	// Example:
-	// r := bytes.NewBuffer(data)
-	// d := labgob.NewDecoder(r)
-	// var xxx
-	// var yyy
-	// if d.Decode(&xxx) != nil ||
-	//    d.Decode(&yyy) != nil {
-	//   error...
-	// } else {
-	//   rf.xxx = xxx
-	//   rf.yyy = yyy
-	// }
+
 	r := bytes.NewBuffer(data)
 	d := labgob.NewDecoder(r)
 	var tmpTerm int
 	var tmpVoteFor int
 	var tmplogs []LogEntry
+	var tmplastSnapshotIndex int
+	var tmplastSnapshotTerm int
 	if d.Decode(&tmpTerm) != nil ||
 		d.Decode(&tmpVoteFor) != nil ||
-		d.Decode(&tmplogs) != nil {
+		d.Decode(&tmplogs) != nil ||
+		d.Decode(&tmplastSnapshotIndex) != nil||
+		d.Decode(&tmplastSnapshotTerm) != nil{
 		fmt.Println("decode error")
 	} else {
 		rf.currentTerm = tmpTerm
 		rf.voteFor = tmpVoteFor
 		rf.logs = tmplogs
+		rf.lastSnapshotIndex = tmplastSnapshotIndex
+		rf.lastSnapshotTerm = tmplastSnapshotTerm
 	}
 }
+
+
 
 
 
@@ -307,9 +302,14 @@ type Raft struct {
 	timer       *time.Ticker  // timer
 	voteTimeout time.Duration // 选举超时时间，选举超时时间是会变动的，所以定义在Raft结构体中
 	applyChan   chan ApplyMsg // 消息channel
+
+
+	// for snapshot
+	lastIncludedIndex int
+	lastSnapshotIndex int
+	lastSnapshotTerm  int
 }
 
-// LogEntry
 type LogEntry struct {
 	Term int         // LogEntry中记录有log的Term
 	Cmd  interface{} // Log的command
@@ -325,7 +325,7 @@ const (
 	Leader
 )
 
-// return currentTerm and whether this server
+// GetState return currentTerm and whether this server
 // believes it is the leader.
 func (rf *Raft) GetState() (int, bool) {
 
@@ -339,3 +339,33 @@ func (rf *Raft) GetState() (int, bool) {
 	rf.mu.Unlock()
 	return term, isleader
 }
+
+
+
+type InstallSnapshotArgs struct {
+	Term         int
+	LeaderId     int //Leader标识
+	LastIncludedIndex 	int
+	LastIncludedTerm 	int
+	offset 				int
+	data 		  		[]byte
+	done 		 		bool
+}
+
+type InstallSnapshotReply struct {
+	Term   int
+	Status SnapshotStatus
+}
+
+type SnapshotStatus int64
+
+const (
+	SnapshotSuccess SnapshotStatus = iota
+	SnapshotFollowerKilled
+	SnapshotLeaderTermOutOfDate
+	SnapshotLogLowerThanFollower
+	SnapshotLogEqualToFollower
+)
+
+
+
