@@ -1216,6 +1216,7 @@ func snapcommon(t *testing.T, name string, disconnect bool, reliable bool, crash
 			cfg.one(rand.Int(), servers, true)
 			leader1 = cfg.checkOneLeader()
 		}
+		fmt.Println("done the round one")
 	}
 	cfg.end()
 }

@@ -1,6 +1,5 @@
 package raft
 
-
 //
 // example code to send a RequestVote RPC to a server.
 // server is the index of the target server in rf.peers[].
@@ -296,3 +295,4 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 //	}
 //	return ok
 //}
+//向指定节点发送快照

@@ -44,6 +44,43 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 // that index. Raft should now trim its log as much as possible.
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// Your code here (2D).
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+
+	// step 1, check if is necessary to make the snapshot
+
+	// case 1: index greater than current commitIndex
+	if index > rf.commitIndex{
+		// cannot make a snapshot for uncommitted data
+		return
+	}
+
+	// case 2: index smaller or equal than last snapshot index, it means snapshot has already be done
+	if index <= rf.lastSnapshotIndex{
+		return
+	}
+
+
+	// case 3: make the snapshot
+
+	// step 1: update own information
+	previousSnapIndex := rf.lastSnapshotIndex
+	rf.lastSnapshotTerm = rf.logs[index - rf.lastSnapshotIndex].Term
+	rf.lastSnapshotIndex = index
+
+	// step 2: drop the previous snapshot
+	rf.logs = rf.logs[index - previousSnapIndex:]
+	rf.logs[0].Cmd = nil
+	rf.logs[0].Term = rf.lastSnapshotTerm
+
+	rf.persist()
+
+	rf.persister.SaveStateAndSnapshot(rf.getPersistData(), snapshot)
+
+
+
+
 
 }
 
@@ -205,79 +242,127 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 }
 
 
-//func (rf *Raft) AcceptSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshotReply) {
-//	// case 1: follower killed
-//	if rf.killed() {
-//		reply.Term = -1
-//		reply.Status = SnapshotFollowerKilled
-//		return
-//	}
-//	rf.mu.Lock()
-//	defer rf.mu.Unlock()
-//
-//	// case 2: the term of snapshot is lower than the follower current status
-//	if args.Term < rf.currentTerm{
-//		reply.Term = rf.currentTerm
-//		reply.Status = SnapshotLeaderTermOutOfDate
-//		return
-//	}
-//
-//	// update status
-//	reply.Term = args.Term
-//	rf.myStatus = Follower
-//	rf.currentTerm = args.Term
-//	rf.voteFor = -1
-//	rf.persist()
-//
-//
-//	// case 3: is smaller than follower
-//	if args.LastIncludedIndex < rf.lastIncludedIndex{
-//		reply.Status = SnapshotLogLowerThanFollower
-//		return
-//	}
-//
-//
-//	// case 4: is already up-to-date
-//	if args.LastIncludedIndex == rf.lastIncludedIndex{
-//		reply.Status = SnapshotLogEqualToFollower
-//		return
-//	}
-//
-//
-//	// case 5: success
-//
-//	// step 1: discard any existing or partial snapshot with a smaller index
-//	temp := make([]LogEntry, 1)
-//	temp[0] = LogEntry{}
-//	temp = append(temp, rf.logs[args.LastIncludedIndex:]...)
-//	rf.logs = temp
-//
-//	// step 2: update index
-//	if args.LastIncludedIndex > rf.commitIndex{
-//		rf.commitIndex = args.LastIncludedIndex
-//		rf.lastApplied = args.LastIncludedIndex
-//	}
-//
-//
-//	rf.persister.SaveStateAndSnapshot(rf.persist(), args.Data)
-//
-//	/***********************************/
-//
-//	//接收发来的快照，并提交一个命令处理
-//	rf.applyCh <- ApplyMsg{
-//		SnapshotValid: true,
-//		Snapshot:      args.Data,
-//		SnapshotTerm:  args.LastIncludedTerm,
-//		SnapshotIndex: args.LastIncludedIndex,
-//	}
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//
-//}
+func (rf *Raft) SendSnapshot(server int,args *InstallSnapshotArgs, reply *InstallSnapshotReply){
+	// not need to lock or unlock, cause this method will only be called when lock is acquired (? really, or wait for some time?)
+
+	// this method should be called by sendAppendEntries, the following code should be used in sendAppendEntries !!!
+
+	//args := &InstallSnapshotArgs{
+	//	Term: rf.currentTerm,
+	//	LeaderId: rf.me,
+	//	LastIncludedIndex: rf.lastSnapshotIndex,
+	//	LastIncludedTerm: rf.lastSnapshotTerm,
+	//	Data: rf.persister.ReadSnapshot(),
+	//}
+	//reply := &InstallSnapshotReply{
+	//
+	//}
+
+	ok := rf.peers[server].Call("Raft.AcceptSnapshot", args, reply)
+	for !ok {
+		ok = rf.peers[server].Call("Raft.AcceptSnapshot", args, reply)
+	}
+
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	if rf.killed(){
+		return
+	}
+
+	if rf.myStatus != Leader{
+		return
+	}
+
+	if reply.Status == SnapshotLeaderTermOutOfDate{
+		rf.myStatus = Follower
+		rf.voteFor = -1
+		rf.persist()
+		return
+	}
+
+	if reply.Status == SnapshotSuccess{
+		// first, we need to check if this reply is out-of-date
+
+		if rf.nextIndexs[server] >= args.LastIncludedIndex + 1{
+			// out-of-date
+		}else {
+			// not out-of-date
+			rf.nextIndexs[server] = args.LastIncludedIndex + 1
+		}
+	}
+
+
+
+
+}
+
+func (rf *Raft) AcceptSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshotReply) {
+	// case 1: follower killed
+	if rf.killed() {
+		reply.Term = -1
+		reply.Status = SnapshotFollowerKilled
+		return
+	}
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	// case 2: the term of snapshot is lower than the follower current status
+	if args.Term < rf.currentTerm{
+		reply.Term = rf.currentTerm
+		reply.Status = SnapshotLeaderTermOutOfDate
+		return
+	}
+
+	// update status
+	reply.Term = args.Term
+	rf.myStatus = Follower
+	rf.currentTerm = args.Term
+	rf.voteFor = -1
+	rf.persist()
+	rf.timer.Reset(HeartBeatTimeout)
+
+	// case 3: is already up-to-date
+	if args.LastIncludedIndex == rf.lastIncludedIndex{
+		reply.Status = SnapshotLogEqualToFollower
+		return
+	}
+
+
+	// case 4: success
+
+	// step 1: discard any existing or partial snapshot with a smaller index
+	temp := make([]LogEntry, 0)
+	if args.LastIncludedIndex > rf.lastIncludedIndex{
+		// do nothing, since it's not even complete
+		rf.lastIncludedIndex = args.LastIncludedIndex
+		temp = append(temp, LogEntry{})
+	}else {
+		temp = append(temp, rf.logs[args.LastIncludedIndex - rf.lastSnapshotIndex :]...)
+	}
+	rf.logs = temp
+
+	// step 2: update index
+	if args.LastIncludedIndex > rf.commitIndex{
+		rf.commitIndex = args.LastIncludedIndex
+		rf.lastApplied = args.LastIncludedIndex
+	}
+	rf.logs[0].Term = args.LastIncludedTerm
+	rf.lastSnapshotTerm = args.LastIncludedTerm
+	rf.lastSnapshotIndex = args.LastIncludedIndex
+
+
+	// step 3: save the data
+	rf.persister.SaveStateAndSnapshot(rf.getPersistData(), args.Data)
+
+
+	// step 4: commit the snapshot
+	rf.applyChan <- ApplyMsg{
+		SnapshotValid: true,
+		Snapshot:      args.Data,
+		SnapshotTerm:  args.LastIncludedTerm,
+		SnapshotIndex: args.LastIncludedIndex,
+	}
+
+	reply.Status = SnapshotSuccess
+}

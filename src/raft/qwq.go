@@ -102,7 +102,7 @@ package raft
 //	me        int                 // this peer's index into peers[]
 //	dead      int32               // set by Kill()
 //
-//	// Your data here (2A, 2B, 2C).
+//	// Your Data here (2A, 2B, 2C).
 //	// Look at the paper's Figure 2 for a description of what
 //	// state a Raft server must maintain.
 //
@@ -136,7 +136,7 @@ package raft
 //// field names must start with capital letters!
 ////
 //type RequestVoteArgs struct {
-//	// Your data here (2A, 2B).
+//	// Your Data here (2A, 2B).
 //	Term         int //	需要竞选的人的任期
 //	CandidateId  int // 需要竞选的人的Id
 //	LastLogIndex int // 竞选人日志条目最后索引
@@ -150,7 +150,7 @@ package raft
 //// 如果当前节点的votedFor为空，且竞选者的日志条目跟收到者的一样新则把票投给该竞选者
 ////
 //type RequestVoteReply struct {
-//	// Your data here (2A).
+//	// Your Data here (2A).
 //	Term        int       // 投票方的term，如果竞选者比自己还低就改为这个
 //	VoteGranted bool      // 是否投票给了该竞选人
 //	VoteState   VoteState // 投票状态
@@ -766,20 +766,20 @@ package raft
 //	// e := labgob.NewEncoder(w)
 //	// e.Encode(rf.xxx)
 //	// e.Encode(rf.yyy)
-//	// data := w.Bytes()
-//	// rf.persister.SaveRaftState(data)
+//	// Data := w.Bytes()
+//	// rf.persister.SaveRaftState(Data)
 //}
 //
 ////
 //// restore previously persisted state.
 ////
-//func (rf *Raft) readPersist(data []byte) {
-//	if data == nil || len(data) < 1 { // bootstrap without any state?
+//func (rf *Raft) readPersist(Data []byte) {
+//	if Data == nil || len(Data) < 1 { // bootstrap without any state?
 //		return
 //	}
 //	// Your code here (2C).
 //	// Example:
-//	// r := bytes.NewBuffer(data)
+//	// r := bytes.NewBuffer(Data)
 //	// d := labgob.NewDecoder(r)
 //	// var xxx
 //	// var yyy

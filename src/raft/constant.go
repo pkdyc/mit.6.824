@@ -182,7 +182,7 @@ const (
 )
 
 type RequestVoteArgs struct {
-	// Your data here (2A, 2B).
+	// Your Data here (2A, 2B).
 	Term         int
 	Candidate    int
 	LastLogIndex int // 用于选举限制，LogEntry中最后Log的index
@@ -194,7 +194,7 @@ type RequestVoteArgs struct {
 // field names must start with capital letters!
 //
 type RequestVoteReply struct {
-	// Your data here (2A).
+	// Your Data here (2A).
 	Term        int
 	VoteGranted bool    //是否同意投票
 	VoteErr     VoteErr //投票操作错误
@@ -287,7 +287,7 @@ type Raft struct {
 	me        int                 // this peer's index into peers[]
 	dead      int32               // set by Kill()
 
-	// Your data here (2A, 2B, 2C).
+	// Your Data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
 	currentTerm int // Server当前的term
@@ -346,10 +346,10 @@ type InstallSnapshotArgs struct {
 	Term         int
 	LeaderId     int //Leader标识
 	LastIncludedIndex 	int
-	LastIncludedTerm 	int
-	offset 				int
-	data 		  		[]byte
-	done 		 		bool
+	LastIncludedTerm int
+	Offset           int
+	Data             []byte
+	Done bool
 }
 
 type InstallSnapshotReply struct {
@@ -363,7 +363,6 @@ const (
 	SnapshotSuccess SnapshotStatus = iota
 	SnapshotFollowerKilled
 	SnapshotLeaderTermOutOfDate
-	SnapshotLogLowerThanFollower
 	SnapshotLogEqualToFollower
 )
 
