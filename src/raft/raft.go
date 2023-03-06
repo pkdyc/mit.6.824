@@ -1,5 +1,7 @@
 package raft
 
+import "fmt"
+
 // ApplyMsg
 // as each Raft peer becomes aware that successive log entries are
 // committed, the peer should send an ApplyMsg to the service (or
@@ -44,9 +46,10 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 // that index. Raft should now trim its log as much as possible.
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// Your code here (2D).
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-
+	fmt.Println("this method has been called")
+	if rf.myStatus != Leader{
+		println("")
+	}
 
 	// step 1, check if is necessary to make the snapshot
 
@@ -66,11 +69,14 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 
 	// step 1: update own information
 	previousSnapIndex := rf.lastSnapshotIndex
-	rf.lastSnapshotTerm = rf.logs[index - rf.lastSnapshotIndex].Term
+	fmt.Printf("[%d]: cut from [%d] to [%d] \n", rf.me ,len(rf.logs), len(rf.logs) - (index - rf.lastSnapshotIndex) - 1)
+	rf.lastSnapshotTerm = rf.logs[rf.getActuallyIndex(index - rf.lastSnapshotIndex)].Term
+	temp := rf.logs[rf.getActuallyIndex(index - rf.lastSnapshotIndex)].Cmd
+	println(temp)
 	rf.lastSnapshotIndex = index
 
 	// step 2: drop the previous snapshot
-	rf.logs = rf.logs[index - previousSnapIndex:]
+	rf.logs = rf.logs[index - previousSnapIndex:] // not need to convert
 	rf.logs[0].Cmd = nil
 	rf.logs[0].Term = rf.lastSnapshotTerm
 
@@ -195,8 +201,16 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.myStatus = Follower
 	rf.timer.Reset(rf.voteTimeout)
 
+
+
+
+
 	// 不匹配
-	if args.PrevLogIndex >= len(rf.logs) || args.PrevLogTerm != rf.logs[args.PrevLogIndex].Term {
+	if !(args.PrevLogIndex >= len(rf.logs) + rf.lastSnapshotIndex) && rf.getActuallyIndex(args.PrevLogIndex) < 0{
+		println("qwq")
+		// there is the probs, args.PrevLogIndex < args.PrevLogIndex and rf.getActuallyIndex(args.PrevLogIndex) is negative
+	}
+	if args.PrevLogIndex >= len(rf.logs) + rf.lastSnapshotIndex || args.PrevLogTerm != rf.logs[rf.getActuallyIndex(args.PrevLogIndex)].Term {
 		reply.Term = rf.currentTerm
 		reply.Success = false
 		reply.AppendErr = AppendErr_LogsNotMatch
@@ -218,7 +232,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	// 处理日志
 	if args.Logs != nil {
-		rf.logs = rf.logs[:args.PrevLogIndex+1]
+		rf.logs = rf.logs[:rf.getActuallyIndex(args.PrevLogIndex + 1)]
 		rf.logs = append(rf.logs, args.Logs...)
 	}
 	for rf.lastApplied < args.LeaderCommit {
@@ -226,7 +240,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		applyMsg := ApplyMsg{
 			CommandValid: true,
 			CommandIndex: rf.lastApplied,
-			Command:      rf.logs[rf.lastApplied].Cmd,
+			Command:      rf.logs[rf.getActuallyIndex(rf.lastApplied)].Cmd,
 		}
 		rf.applyChan <- applyMsg
 		rf.commitIndex = rf.lastApplied
@@ -238,6 +252,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	reply.NotMatchIndex = -1
 	rf.persist()
 	rf.mu.Unlock()
+
+	rf.debugLargest = args.PrevLogIndex + 1
+	//rf.lastIncludedIndex = args.PrevLogIndex + 1
 	return
 }
 
@@ -338,7 +355,7 @@ func (rf *Raft) AcceptSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshot
 		rf.lastIncludedIndex = args.LastIncludedIndex
 		temp = append(temp, LogEntry{})
 	}else {
-		temp = append(temp, rf.logs[args.LastIncludedIndex - rf.lastSnapshotIndex :]...)
+		temp = append(temp, rf.logs[args.LastIncludedIndex - rf.lastSnapshotIndex :]...) // not need to convert
 	}
 	rf.logs = temp
 

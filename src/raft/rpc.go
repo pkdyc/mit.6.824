@@ -104,6 +104,10 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 	return ok
 }
 
+func (rf *Raft) getActuallyIndex(i int) int{
+	return i - rf.lastSnapshotIndex
+}
+
 func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply, appendNum *int) bool {
 	if rf.killed() {
 		return false
@@ -142,7 +146,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 		rf.nextIndexs[server] = args.LogIndex + 1
 		if *appendNum > len(rf.peers)/2 {
 			*appendNum = 0
-			if rf.logs[args.LogIndex].Term != rf.currentTerm {
+			if rf.logs[rf.getActuallyIndex(args.LogIndex)].Term != rf.currentTerm {
 				rf.mu.Unlock()
 				return false
 			}
@@ -150,7 +154,7 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 				rf.lastApplied++
 				applyMsg := ApplyMsg{
 					CommandValid: true,
-					Command:      rf.logs[rf.lastApplied].Cmd,
+					Command:      rf.logs[rf.getActuallyIndex(rf.lastApplied)].Cmd,
 					CommandIndex: rf.lastApplied,
 				}
 				rf.applyChan <- applyMsg
@@ -168,13 +172,28 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 			rf.persist()
 		}
 		rf.mu.Unlock()
-	case AppendErr_LogsNotMatch:
+	case AppendErr_LogsNotMatch, AppendErr_Commited:
 		rf.mu.Lock()
 		if args.Term != rf.currentTerm {
 			rf.mu.Unlock()
 			return false
 		}
 		rf.nextIndexs[server] = reply.NotMatchIndex
+		if reply.NotMatchIndex < rf.lastSnapshotIndex{
+			// send the snapshot if the lastSnapshotIndex > NotMatchIndex
+			args := &InstallSnapshotArgs{
+				Term: rf.currentTerm,
+				LeaderId: rf.me,
+				LastIncludedIndex: rf.lastSnapshotIndex,
+				LastIncludedTerm: rf.lastSnapshotTerm,
+				Data: rf.persister.ReadSnapshot(),
+			}
+			reply := &InstallSnapshotReply{
+
+			}
+			go rf.SendSnapshot(server, args, reply)
+		}
+
 		rf.mu.Unlock()
 	case AppendErr_ReqRepeat:
 		rf.mu.Lock()
@@ -186,113 +205,9 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 			rf.persist()
 		}
 		rf.mu.Unlock()
-	case AppendErr_Commited:
-		rf.mu.Lock()
-		if args.Term != rf.currentTerm {
-			rf.mu.Unlock()
-			return false
-		}
-		rf.nextIndexs[server] = reply.NotMatchIndex
-		rf.mu.Unlock()
 	case AppendErr_RaftKilled:
 		return false
 	}
 	return ok
 }
 
-//func (rf *Raft) sendSnapshot(server int, args *InstallSnapshotArgs, reply *InstallSnapshotReply, appendNum *int) bool {
-//	if rf.killed() {
-//		return false
-//	}
-//	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
-//	for !ok {
-//		if rf.killed() {
-//			return false
-//		}
-//		ok = rf.peers[server].Call("Raft.AppendEntries", args, reply)
-//		if ok {
-//			break
-//		}
-//	}
-//
-//	if rf.killed() {
-//		return false
-//	}
-//	rf.mu.Lock()
-//	if args.Term < rf.currentTerm { // 过期消息
-//		rf.mu.Unlock()
-//		return false
-//	}
-//	rf.mu.Unlock()
-//
-//	switch reply.AppendErr {
-//	case AppendErr_Nil:
-//		rf.mu.Lock()
-//		if reply.Success && reply.Term == rf.currentTerm && *appendNum <= len(rf.peers)/2 {
-//			*appendNum++
-//		}
-//		if rf.nextIndexs[server] >= args.LogIndex+1 {
-//			rf.mu.Unlock()
-//			return ok
-//		}
-//		rf.nextIndexs[server] = args.LogIndex + 1
-//		if *appendNum > len(rf.peers)/2 {
-//			*appendNum = 0
-//			if rf.logs[args.LogIndex].Term != rf.currentTerm {
-//				rf.mu.Unlock()
-//				return false
-//			}
-//			for rf.lastApplied < args.LogIndex {
-//				rf.lastApplied++
-//				applyMsg := ApplyMsg{
-//					CommandValid: true,
-//					Command:      rf.logs[rf.lastApplied].Cmd,
-//					CommandIndex: rf.lastApplied,
-//				}
-//				rf.applyChan <- applyMsg
-//				rf.commitIndex = rf.lastApplied
-//			}
-//		}
-//		rf.mu.Unlock()
-//	case AppendErr_ReqOutofDate:
-//		rf.mu.Lock()
-//		rf.myStatus = Follower
-//		rf.timer.Reset(rf.voteTimeout)
-//		if reply.Term > rf.currentTerm {
-//			rf.currentTerm = reply.Term
-//			rf.voteFor = -1
-//			rf.persist()
-//		}
-//		rf.mu.Unlock()
-//	case AppendErr_LogsNotMatch:
-//		rf.mu.Lock()
-//		if args.Term != rf.currentTerm {
-//			rf.mu.Unlock()
-//			return false
-//		}
-//		rf.nextIndexs[server] = reply.NotMatchIndex
-//		rf.mu.Unlock()
-//	case AppendErr_ReqRepeat:
-//		rf.mu.Lock()
-//		if reply.Term > rf.currentTerm {
-//			rf.myStatus = Follower
-//			rf.currentTerm = reply.Term
-//			rf.voteFor = -1
-//			rf.timer.Reset(rf.voteTimeout)
-//			rf.persist()
-//		}
-//		rf.mu.Unlock()
-//	case AppendErr_Commited:
-//		rf.mu.Lock()
-//		if args.Term != rf.currentTerm {
-//			rf.mu.Unlock()
-//			return false
-//		}
-//		rf.nextIndexs[server] = reply.NotMatchIndex
-//		rf.mu.Unlock()
-//	case AppendErr_RaftKilled:
-//		return false
-//	}
-//	return ok
-//}
-//向指定节点发送快照

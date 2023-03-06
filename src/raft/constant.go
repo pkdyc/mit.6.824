@@ -308,6 +308,8 @@ type Raft struct {
 	lastIncludedIndex int
 	lastSnapshotIndex int
 	lastSnapshotTerm  int
+
+	debugLargest int
 }
 
 type LogEntry struct {
